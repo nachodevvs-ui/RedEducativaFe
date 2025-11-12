@@ -14,7 +14,7 @@ export const configHeaders = () => ({
 });
 
 const clientAxios = axios.create({
-  baseURL: `http://localhost:3000/api`,
+  baseURL: `http://localhost:3001/api`,
 });
 
 clientAxios.interceptors.request.use((config) => {
