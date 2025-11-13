@@ -14,64 +14,45 @@ import {
   FaPlus,
   FaEdit,
   FaTrashAlt,
-  FaCheckCircle, // Para "Es Comuna" (Sí)
-  FaTimesCircle, // Para "Es Comuna" (No)
-  FaBuilding, // Icono para Localidad
+  FaCheckCircle,
+  FaTimesCircle,
+  FaBuilding,
 } from "react-icons/fa";
 import COLORS from "./ColoresHome";
 import clientAxios from "../helpers/axios.helpers";
-import ModalFormCircuits from "../Components/ModalFormCircuits";
 import ModalFormLocalidades from "../Components/ModalFormLocalidades";
 
 const getLocalidades = async () => {
   try {
-    const { data } = await clientAxios.get("/localidades"); // ⬅️ Nuevo Endpoint
+    const { data } = await clientAxios.get("/localidades");
     return data || [];
   } catch (error) {
-    console.error("Error al obtener localidades de API:", error);
+    console.error("Error al obtener localidades:", error);
     return [];
   }
 };
 
 const getDepartamentos = async () => {
   try {
-    const { data } = await clientAxios.get("/departamentos"); // Usamos el endpoint de Departamentos
+    const { data } = await clientAxios.get("/departamentos");
     return data || [];
   } catch (error) {
-    console.error("Error al obtener departamentos de API:", error);
+    console.error("Error al obtener departamentos:", error);
     return [];
   }
 };
 
-/**
- * Combina la lista de localidades con los nombres de sus departamentos.
- * @param {Array} localidadesData - Lista de localidades (con id_departamento).
- * @param {Array} departamentosData - Lista de departamentos (con id_departamento y nombre).
- * @returns {Array} Localidades con el campo nombre_departamento añadido.
- */
 const getLocalidadesConDepartamento = (localidadesData, departamentosData) => {
-  // 1. Crear un mapa de Departamentos para un acceso rápido por ID (O(1))
-  const departamentosMap = departamentosData.reduce((map, departamento) => {
-    // Usamos id_departamento como clave y el nombre como valor
-    map[departamento.id_departamento] = departamento.nombre;
+  const departamentosMap = departamentosData.reduce((map, dep) => {
+    map[dep.id_departamento] = dep.nombre;
     return map;
   }, {});
-
-  return localidadesData.map((localidad) => {
-    const nombreDepartamento = departamentosMap[localidad.id_departamento];
-
-    return {
-      ...localidad,
-      id_localidad: localidad.id_localidad,
-      nombre_departamento: nombreDepartamento || "Departamento No Asignado",
-      es_comuna: !!localidad.es_comuna,
-    };
-  });
+  return localidadesData.map((loc) => ({
+    ...loc,
+    nombre_departamento: departamentosMap[loc.id_departamento] || "Departamento No Asignado",
+    es_comuna: !!loc.es_comuna,
+  }));
 };
-
-// -----------------------------------------------------------
-// Componente principal: LocalidadesPage
-// -----------------------------------------------------------
 
 export default function LocalidadesPage() {
   const [localidades, setLocalidades] = useState([]);
@@ -80,39 +61,25 @@ export default function LocalidadesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [departamentosData, setDepartamentosData] = useState([]);
   const [localidadAEditar, setLocalidadAEditar] = useState(null);
-  const [refreshFlag, setRefreshFlag] = useState(false);
-
-  // --- FUNCIÓN DE CARGA COMPLETA (Localidades + Departamentos JOIN) ---
-  const fetchDataCompletaLocalidades = async () => {
-    setIsLoading(true);
-    try {
-      // 1. Cargar datos en paralelo: Localidades y Departamentos
-      const [localidadesList, departamentosList] = await Promise.all([
-        getLocalidades(),
-        getDepartamentos(),
-      ]);
-
-      setDepartamentosData(departamentosList);
-
-      // 2. Realizar el Join en el frontend
-      const res = getLocalidadesConDepartamento(
-        localidadesList,
-        departamentosList
-      );
-
-      setLocalidades(res);
-    } catch (error) {
-      console.error("Fallo la carga completa de Localidades:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   useEffect(() => {
-    fetchDataCompletaLocalidades();
-  }, [refreshFlag]);
-
-  // --- Manejo de Modal y CRUD ---
+    const fetchData = async () => {
+      setIsLoading(true);
+      try {
+        const [localidadesList, departamentosList] = await Promise.all([
+          getLocalidades(),
+          getDepartamentos(),
+        ]);
+        setDepartamentosData(departamentosList);
+        setLocalidades(getLocalidadesConDepartamento(localidadesList, departamentosList));
+      } catch (error) {
+        console.error("Error al cargar datos:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
 
   const handleShow = () => {
     setLocalidadAEditar(null);
@@ -124,55 +91,53 @@ export default function LocalidadesPage() {
     setLocalidadAEditar(null);
   };
 
-  const handleDataChange = () => {
-    setRefreshFlag((prev) => !prev);
+  const handleAddLocalidad = (newLocalidad) => {
+    const nombreDepartamento =
+      departamentosData.find((d) => d.id_departamento === newLocalidad.id_departamento)
+        ?.nombre || "Departamento No Asignado";
+
+    setLocalidades((prev) => [
+      ...prev,
+      { ...newLocalidad, nombre_departamento, es_comuna: !!newLocalidad.es_comuna },
+    ]);
+  };
+
+  const handleUpdateLocalidad = (updatedLocalidad) => {
+    setLocalidades((prev) =>
+      prev.map((loc) =>
+        loc.id_localidad === updatedLocalidad.id_localidad ? updatedLocalidad : loc
+      )
+    );
   };
 
   const handleEdit = (localidadId) => {
-    const localidadEncontrada = console.log(
-      localidades.find((l) => l.id_localidad == localidadId)
-    );
-    if (localidadEncontrada) {
-      setLocalidadAEditar(localidadEncontrada);
+    const loc = localidades.find((l) => l.id_localidad === localidadId);
+    if (loc) {
+      setLocalidadAEditar(loc);
       setShowModal(true);
     }
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm(`¿Estás seguro de eliminar la Localidad ID ${id}?`))
-      return;
+    if (!window.confirm(`¿Seguro de eliminar la Localidad ID ${id}?`)) return;
     try {
-      await clientAxios.delete(`/localidades/${id}`); // ⬅️ Endpoint DELETE
+      await clientAxios.delete(`/localidades/${id}`);
+      setLocalidades((prev) => prev.filter((loc) => loc.id_localidad !== id));
       alert("Localidad eliminada con éxito.");
-      handleDataChange(); // Forzar recarga
     } catch (error) {
       console.error("Error al eliminar:", error);
-      alert(
-        "Error al eliminar la localidad. Verifica que no tenga dependencias."
-      );
+      alert("Error al eliminar la localidad.");
     }
   };
 
-  // --- Lógica de Filtro ---
-
   const filteredLocalidades = localidades.filter(
-    (localidad) =>
-      (localidad.nombre || "")
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase()) ||
-      (localidad.nombre_departamento || "")
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase())
+    (loc) =>
+      loc.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      loc.nombre_departamento.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // --- Renderizado ---
-
   return (
-    <Container
-      fluid
-      style={{ backgroundColor: COLORS.bgLight }}
-      className="min-vh-100 py-5"
-    >
+    <Container fluid style={{ backgroundColor: COLORS.bgLight }} className="min-vh-100 py-5">
       <Container style={{ maxWidth: "1200px" }}>
         <Row className="mb-4 d-flex align-items-center">
           <Col md={8}>
@@ -202,20 +167,10 @@ export default function LocalidadesPage() {
 
         <Card className="shadow-sm border-0" style={{ borderRadius: "12px" }}>
           <Card.Body className="p-4">
-            {/* Campo de Búsqueda */}
             <Row className="mb-4">
               <Col md={6}>
-                <InputGroup
-                  className="shadow-sm border-0"
-                  style={{ borderRadius: "8px", overflow: "hidden" }}
-                >
-                  <InputGroup.Text
-                    style={{
-                      backgroundColor: COLORS.bgWhite,
-                      borderColor: COLORS.bgLight,
-                      borderRight: "none",
-                    }}
-                  >
+                <InputGroup className="shadow-sm border-0" style={{ borderRadius: "8px", overflow: "hidden" }}>
+                  <InputGroup.Text style={{ backgroundColor: COLORS.bgWhite, borderColor: COLORS.bgLight, borderRight: "none" }}>
                     <FaSearch style={{ color: COLORS.textSecondary }} />
                   </InputGroup.Text>
                   <Form.Control
@@ -223,120 +178,52 @@ export default function LocalidadesPage() {
                     placeholder="Buscar por nombre de localidad o departamento..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    style={{
-                      backgroundColor: COLORS.bgWhite,
-                      borderColor: COLORS.bgLight,
-                      borderLeft: "none",
-                      boxShadow: "none",
-                    }}
+                    style={{ backgroundColor: COLORS.bgWhite, borderColor: COLORS.bgLight, borderLeft: "none", boxShadow: "none" }}
                   />
                 </InputGroup>
               </Col>
             </Row>
 
-            {/* --- TABLA DE DATOS --- */}
             <Table responsive hover borderless className="align-middle">
               <thead>
-                <tr
-                  style={{
-                    color: COLORS.textPrimary,
-                    borderBottom: `1px solid ${COLORS.bgLight}`,
-                  }}
-                >
-                  <th style={{ width: "10%" }}>ID</th>
-                  <th style={{ width: "30%" }}>Nombre Localidad</th>
-                  <th style={{ width: "25%" }}>Departamento Asignado</th>
-                  <th style={{ width: "15%" }} className="text-center">
-                    Es Comuna
-                  </th>
-                  <th style={{ width: "20%" }} className="text-center">
-                    Acciones
-                  </th>
+                <tr style={{ color: COLORS.textPrimary, borderBottom: `1px solid ${COLORS.bgLight}` }}>
+                  <th>ID</th>
+                  <th>Nombre Localidad</th>
+                  <th>Departamento Asignado</th>
+                  <th className="text-center">Es Comuna</th>
+                  <th className="text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
                   <tr>
                     <td colSpan="5" className="text-center py-5">
-                      <div
-                        className="spinner-border text-primary"
-                        role="status"
-                      >
+                      <div className="spinner-border text-primary" role="status">
                         <span className="visually-hidden">Cargando...</span>
                       </div>
                     </td>
                   </tr>
                 ) : filteredLocalidades.length === 0 ? (
                   <tr>
-                    <td
-                      colSpan="5"
-                      className="text-center py-4"
-                      style={{ color: COLORS.textSecondary }}
-                    >
+                    <td colSpan="5" className="text-center py-4" style={{ color: COLORS.textSecondary }}>
                       No se encontraron localidades.
                     </td>
                   </tr>
                 ) : (
-                  filteredLocalidades.map((localidad) => (
-                    <tr
-                      key={localidad.id_localidad}
-                      style={{ borderBottom: `1px solid ${COLORS.bgLight}` }}
-                    >
-                      <td
-                        className="fw-bold"
-                        style={{ color: COLORS.textPrimary }}
-                      >
-                        {localidad.id_localidad}
+                  filteredLocalidades.map((loc) => (
+                    <tr key={loc.id_localidad} style={{ borderBottom: `1px solid ${COLORS.bgLight}` }}>
+                      <td className="fw-bold" style={{ color: COLORS.textPrimary }}>{loc.id_localidad}</td>
+                      <td className="fw-bold" style={{ color: COLORS.textPrimary }}>
+                        <FaBuilding size={12} className="me-2" style={{ color: COLORS.textSecondary }} />
+                        {loc.nombre}
                       </td>
-                      <td
-                        className="fw-bold"
-                        style={{ color: COLORS.textPrimary }}
-                      >
-                        <FaBuilding
-                          size={12}
-                          className="me-2"
-                          style={{ color: COLORS.textSecondary }}
-                        />
-                        {localidad.nombre}
-                      </td>
-                      {/* Columna de Departamento Unido */}
-                      <td style={{ color: COLORS.textSecondary }}>
-                        <span className="fw-semibold">
-                          {localidad.nombre_departamento}
-                        </span>
-                      </td>
-                      {/* Columna Es Comuna */}
+                      <td style={{ color: COLORS.textSecondary }}><span className="fw-semibold">{loc.nombre_departamento}</span></td>
                       <td className="text-center">
-                        {localidad.es_comuna == 0 ? (
-                          <FaCheckCircle
-                            style={{ color: COLORS.success }}
-                            title="Es Comuna"
-                          />
-                        ) : (
-                          <FaTimesCircle
-                            style={{ color: COLORS.danger }}
-                            title="No es Comuna"
-                          />
-                        )}
+                        {loc.es_comuna ? <FaCheckCircle style={{ color: COLORS.success }} title="Es Comuna" /> : <FaTimesCircle style={{ color: COLORS.danger }} title="No es Comuna" />}
                       </td>
-
                       <td className="text-center">
-                        {/* Botones de Acción */}
-                        <Button
-                          variant="light"
-                          onClick={() => handleEdit(localidad.id_localidad)}
-                          className="me-2"
-                          style={{ color: COLORS.primary }}
-                        >
-                          <FaEdit />
-                        </Button>
-                        <Button
-                          variant="light"
-                          onClick={() => handleDelete(localidad.id_localidad)}
-                          style={{ color: COLORS.danger }}
-                        >
-                          <FaTrashAlt />
-                        </Button>
+                        <Button variant="light" onClick={() => handleEdit(loc.id_localidad)} className="me-2" style={{ color: COLORS.primary }}><FaEdit /></Button>
+                        <Button variant="light" onClick={() => handleDelete(loc.id_localidad)} style={{ color: COLORS.danger }}><FaTrashAlt /></Button>
                       </td>
                     </tr>
                   ))
@@ -347,14 +234,13 @@ export default function LocalidadesPage() {
         </Card>
       </Container>
 
-      {/* 🎯 Modal del Formulario */}
       <ModalFormLocalidades
         show={showModal}
         handleClose={handleClose}
-        onSave={handleDataChange} // Usa la misma función para recargar al guardar/actualizar
+        onSave={handleAddLocalidad}
+        onUpdate={handleUpdateLocalidad}
         localidadToEdit={localidadAEditar}
-        onUpdate={handleDataChange}
-        departamentosData={departamentosData} // Pasa la lista de departamentos al modal para el select
+        departamentosData={departamentosData}
       />
     </Container>
   );

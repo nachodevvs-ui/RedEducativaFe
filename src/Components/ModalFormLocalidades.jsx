@@ -3,6 +3,7 @@ import { Modal, Form, Button, Row, Col, Alert } from "react-bootstrap";
 import { FaSave, FaTimes, FaBuilding, FaMapSigns } from "react-icons/fa";
 import clientAxios from "../helpers/axios.helpers";
 import COLORS from "../pages/ColoresHome";
+import Swal from "sweetalert2";
 
 const initialFormData = {
   nombre: "",
@@ -15,14 +16,13 @@ export default function ModalFormLocalidades({
   handleClose,
   onSave,
   onUpdate,
-  localidadToEdit, // Ahora se llama 'localidadToEdit'
-  departamentosData, // Recibe la lista de departamentos como prop
+  localidadToEdit,
+  departamentosData,
 }) {
   const [formData, setFormData] = useState(initialFormData);
   const [error, setError] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  // --- Efecto para cargar datos en modo edición ---
   useEffect(() => {
     if (localidadToEdit) {
       setFormData({
@@ -33,19 +33,14 @@ export default function ModalFormLocalidades({
     } else {
       setFormData(initialFormData);
     }
-    console.log(formData);
     setError(null);
   }, [localidadToEdit, show]);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-
-    // Manejo especial para el checkbox 'es_comuna'
-    const newValue = type === "checkbox" ? checked : value;
-
     setFormData({
       ...formData,
-      [name]: newValue,
+      [name]: type === "checkbox" ? checked : value,
     });
     setError(null);
   };
@@ -55,7 +50,6 @@ export default function ModalFormLocalidades({
     setIsSaving(true);
     setError(null);
 
-    // ⚠️ Validación
     if (!formData.nombre || !formData.id_departamento) {
       setError("El nombre de la Localidad y el Departamento son obligatorios.");
       setIsSaving(false);
@@ -64,27 +58,36 @@ export default function ModalFormLocalidades({
 
     const isEditing = !!localidadToEdit;
     const url = isEditing
-      ? `/localidades/${localidadToEdit.id_localidad}` // ⬅️ Endpoint PUT
-      : "/localidades"; // ⬅️ Endpoint POST
+      ? `/localidades/${localidadToEdit.id_localidad}`
+      : "/localidades";
     const method = isEditing ? clientAxios.put : clientAxios.post;
 
     try {
       const dataToSend = {
         ...formData,
-        // Convertimos el id_departamento a entero para la API
         id_departamento: parseInt(formData.id_departamento),
-        // Si la API requiere 1/0 en lugar de true/false, puedes cambiarlo aquí:
-        // es_comuna: formData.es_comuna ? 1 : 0,
       };
 
-      await method(url, dataToSend);
+      const response = await method(url, dataToSend);
 
       if (isEditing) {
-        onUpdate();
-        alert("Localidad actualizada con éxito.");
+        onUpdate(response.data);
+        Swal.fire({
+          position: "top-end",
+          icon: "success",
+          title: "Localidad actualizada",
+          showConfirmButton: false,
+          timer: 1500,
+        });
       } else {
-        onSave();
-        alert("Localidad creada con éxito.");
+        onSave(response.data);
+        Swal.fire({
+          position: "top-end",
+          icon: "success",
+          title: "Localidad creada",
+          showConfirmButton: false,
+          timer: 1500,
+        });
       }
 
       handleClose();
@@ -102,22 +105,12 @@ export default function ModalFormLocalidades({
     ? "Editar Localidad"
     : "Crear Nueva Localidad";
 
-  // Verificamos si la lista de departamentos está disponible
   const isLoadingDepartamentos =
     !departamentosData || departamentosData.length === 0;
 
   return (
-    <Modal
-      show={show}
-      onHide={handleClose}
-      centered
-      backdrop="static"
-      keyboard={false}
-    >
-      <Modal.Header
-        closeButton
-        style={{ borderBottom: `2px solid ${COLORS.textHeader}` }}
-      >
+    <Modal show={show} onHide={handleClose} centered backdrop="static" keyboard={false}>
+      <Modal.Header closeButton style={{ borderBottom: `2px solid ${COLORS.textHeader}` }}>
         <Modal.Title className="fw-bold" style={{ color: COLORS.textHeader }}>
           {modalTitle}
         </Modal.Title>
@@ -126,7 +119,6 @@ export default function ModalFormLocalidades({
         <Modal.Body>
           {error && <Alert variant="danger">{error}</Alert>}
           <Row>
-            {/* 1. Campo Nombre de la Localidad */}
             <Col md={12} className="mb-3">
               <Form.Group controlId="formNombre">
                 <Form.Label className="fw-semibold">
@@ -178,8 +170,7 @@ export default function ModalFormLocalidades({
                       key={departamento.id_departamento}
                       value={departamento.id_departamento}
                     >
-                      {departamento.id_departamento} -{" "}
-                      {departamento.nombre || "Departamento sin nombre"}
+                      {departamento.id_departamento} - {departamento.nombre}
                     </option>
                   ))}
                 </Form.Select>
@@ -203,10 +194,7 @@ export default function ModalFormLocalidades({
           >
             {isSaving ? (
               <>
-                <div
-                  className="spinner-border spinner-border-sm me-2"
-                  role="status"
-                ></div>
+                <div className="spinner-border spinner-border-sm me-2" role="status"></div>
                 Guardando...
               </>
             ) : (
